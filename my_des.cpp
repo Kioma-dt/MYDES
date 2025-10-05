@@ -1,10 +1,62 @@
 #include <iostream>
 #include <bitset>
 #include <stdint.h>
+#include <ctime>
 
 using u8  = uint8_t;
 using u32 = uint32_t;
 using u64 = uint64_t;
+
+template <std::size_t N>
+class BitSet {
+    std::bitset<N> _bits;
+
+public:
+    BitSet()
+        : _bits()
+    {}
+
+    BitSet(u64 bits)
+        : _bits(bits)
+    {}
+
+    bool operator[](size_t n){
+        return _bits[N - n];
+    }
+
+    u64 GetNumDec(){
+        return _bits.to_ullong();
+    }
+
+    std::string GetNumBin(){
+        return _bits.to_string();
+    }
+
+    template<std::size_t count>
+    BitSet<count> GetSubBitSet(size_t from, size_t to){
+        u64 sub_bit_set = 0;
+        for (int i = from; i <= to; i++){
+            sub_bit_set <<= 1;
+            sub_bit_set |= (*this)[i];
+        }
+        return BitSet<count>(sub_bit_set);
+    }
+};
+
+template<std::size_t N>
+bool GetBit(std::bitset<N> bits, size_t n){
+    return bits[N - n];
+}
+
+template<std::size_t N, std::size_t count>
+    std::bitset<count> GetSubBitSet(std::bitset<N> bits, size_t from, size_t to){
+        u64 sub_bit_set = 0;
+        for (int i = from; i <= to; i++){
+            sub_bit_set <<= 1;
+            sub_bit_set |= GetBit<N>(bits, i);
+        }
+        return std::bitset<count>(sub_bit_set);
+    }
 
 static const u8 KeyRolling[16] = {
     1, 1, 2, 2, 2, 2, 2, 2,
@@ -128,38 +180,33 @@ static const u32 SP8[64] = {
     0x00001040,0x10040000,0x10041000,0x10000040,0x10000040,0x00000000,0x00000000,0x10041040
 };
 
-struct ROWKEY {
-    u32 first_half;
-    u32 second_half;
-};
-
-ROWKEY RolKey(ROWKEY key, int round)
+std::bitset<56> RolKey(std::bitset<56> key, int round)
 {
     u8 shift = KeyRolling[round];
-    u32 mask = 0x0fffffff;
+    std::bitset<28> mask = 0x0fffffff;
 
-    ROWKEY rol_key = {(key.first_half << shift | key.first_half >> (28 - shift)) & mask,
-                (key.second_half << shift | key.second_half >> (28 - shift)) & mask};
+    std::bitset<28> first_half = GetSubBitSet<56, 28>(key, 1, 28);
+    std::bitset<28> second_half = GetSubBitSet<56, 28>(key, 29, 56);
+
+    std::bitset<56> rol_key = (((first_half << shift | first_half >> (28 - shift)) & mask).to_ullong() << 28 |
+                ((second_half << shift | second_half >> (28 - shift)) & mask).to_ullong());
 
     return rol_key;
 }
 
-u64 ApplyPC2(ROWKEY key){
-    u64 full_key = (key.first_half << 28) | key.second_half;
+std::bitset<48> ApplyPC2(std::bitset<56> key){
 
-    u64 sub_key = 0;
-    for (int i = 0; i < 48; i++){
-        u8 bit_number = PC2[i] - 1;
-        u8 bit = (full_key >> bit_number) & 1;
-        sub_key <<= 1;
-        sub_key |= bit;
+    std::bitset<48> sub_key(0);
+    for (int i = 1; i <= 48; i++){
+        u8 bit_number = PC2[i - 1];
+        sub_key[48 - i] = GetBit<56>(key, bit_number);
     }
 
-    return sub_key;
+    return std::bitset<48>(sub_key);
 }
 
-u64* CooKeys(ROWKEY des_key){
-    u64 *cookeys = new u64[16];
+std::bitset<48>* CooKeys(std::bitset<56> des_key){
+    std::bitset<48> *cookeys = new std::bitset<48>[16];
     for (int i = 0; i < 16; i++){
         des_key = RolKey(des_key, i);
         cookeys[i] = ApplyPC2(des_key);
@@ -168,31 +215,32 @@ u64* CooKeys(ROWKEY des_key){
     return cookeys;
 }
 
-u64 DesFunc(u64 plain_text, u64* cookeys){
-    u32 left = (plain_text >> 32) & 0xFFFFFFFF;
-    u32 right = plain_text & 0xFFFFFFFF;
+std::bitset<64> DesFunc(std::bitset<64> plain_text, std::bitset<48>* cookeys){
+    std::bitset<32> left = std::bitset<32>((plain_text.to_ullong() >> 32) & 0xFFFFFFFF);
+    std::bitset<32> right = std::bitset<32>(plain_text.to_ullong() & 0xFFFFFFFF);
 
     for (int i = 0; i < 16; i++){
         // E - table
-        u64 b_e = 0;
-        for (int j = 0; j < 48; j++){
-            u8 bit_number = E[j] - 1;
-            u8 bit = (right >> bit_number) & 1;
-            b_e <<= 1;
-            b_e |= bit;
+        std::bitset<48> b_e = 0;
+        for (int j = 1; j <= 48; j++){
+            u8 bit_number = E[j - 1];
+            b_e[48 - j] = GetBit<32>(right, bit_number);
         }
 
         // XOR KEY
-        u64 b_k = b_e ^ cookeys[i];
+        std::bitset<48> b_k = b_e ^ cookeys[i];
 
         // S - table
-        u32 b_s = 0;
+        std::bitset<32> b_s = 0;
         for (int s = 0; s < 8; s++){
-            u8 mask = 0b111111;
-            std::bitset<6> b((b_k >> ((7 - s) * 6)) & mask);
+            std::bitset<6> b = GetSubBitSet<48, 6>(b_k, s * 6 + 1, (s + 1) * 6);
 
-            u8 row = (b[5] << 1) | b[0];
-            u8 column = (b[4] << 3) | (b[3] << 2) | (b[2] << 1) | (b[1]);
+            u8 row = (GetBit<6>(b,1) << 1) | 
+                    (GetBit<6>(b,6));
+            u8 column = (GetBit<6>(b,2) << 3) |
+                        (GetBit<6>(b,3) << 2) | 
+                        (GetBit<6>(b,4) << 1) | 
+                        (GetBit<6>(b,5));
 
             u32 res = 0;
             switch (s) {
@@ -205,46 +253,51 @@ u64 DesFunc(u64 plain_text, u64* cookeys){
                 case 6: res = SP7[row * 16 + column]; break;
                 case 7: res = SP8[row * 16 + column]; break;
             }
-            b_s |= res;
+            b_s |= std::bitset<32>(res);
         }
 
         // SWAP
-        u32 new_left = b_s ^ left;
+        std::bitset<32> new_left = b_s ^ left;
         left = right;
         right = new_left;
     }
-
-    u64 tmp_right = right;
-    u64 tmp_left = left;
-    return (tmp_right << 32) | tmp_left;
+    return std::bitset<64>(( right.to_ullong()<< 32) | left.to_ullong());
 }
 
-void ReverseKeys(u64* cookeys, int rounds = 16) {
+void ReverseKeys(std::bitset<48>* cookeys, int rounds = 16) {
     for (int i = 0; i < rounds / 2; i++) {
-        u64 temp = cookeys[i];
+        std::bitset<48> temp = cookeys[i];
         cookeys[i] = cookeys[rounds - 1 - i];
         cookeys[rounds - 1 - i] = temp;
     }
 }
 
 int main(){
-    ROWKEY key = {0x0E329232, 0xEA6D0D73};  
+    std::bitset<56> key(0x0E329232EA6D0D73);  
 
-    u64* cookeys = CooKeys(key);
+    std::bitset<48>* cookeys = CooKeys(key);
 
-    std::cout << "Key: " << std::hex << cookeys[0] << std::endl;
+    std::cout << "Key: " << std::hex << cookeys[0].to_ullong() << std::endl;
 
-    u64 plaintext = 0x012345678922CDEF;
-    std::cout << "Plain Text: " << std::hex << plaintext << std::endl;
+    std::bitset<64> plaintext(0x012345678922CDEF);
+    std::cout << "Plain Text: " << std::hex << plaintext.to_ullong() << std::endl;
 
-    u64 ciphertext = DesFunc(plaintext, cookeys);
+    std::bitset<64> ciphertext;
+    clock_t start = clock();
+    for (size_t i = 0; i < 100000;i++) {
+        ciphertext = DesFunc(plaintext, cookeys);
+    }
+    clock_t end = clock();
 
-    std::cout << "Encrypted: " << ciphertext << std::endl;
+    std::cout << "Encrypted: " << ciphertext.to_ullong() << std::endl;
 
     ReverseKeys(cookeys);
 
-    std::cout << "Decrypted: " << DesFunc(ciphertext, cookeys) << std::endl;
+    std::cout << "Decrypted: " << DesFunc(ciphertext, cookeys).to_ullong() << std::endl;
 
     delete[] cookeys;
+
+    std::cout << "Time: " << (double) (end - start) / CLOCKS_PER_SEC;
+
     return 0;
 }
