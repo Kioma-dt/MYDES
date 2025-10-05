@@ -1,6 +1,7 @@
 #include <iostream>
 #include <bitset>
 #include <stdint.h>
+#include<ctime>
 
 using u8  = uint8_t;
 using u32 = uint32_t;
@@ -237,7 +238,12 @@ int main(){
     u64 plaintext = 0x012345678922CDEF;
     std::cout << "Plain Text: " << std::hex << plaintext << std::endl;
 
-    u64 ciphertext = DesFunc(plaintext, cookeys);
+    u64 ciphertext;
+    clock_t start = clock();
+    for (int i = 0; i < 1000000; i++){
+        ciphertext = DesFunc(plaintext, cookeys);
+    }
+    clock_t end = clock();
 
     std::cout << "Encrypted: " << ciphertext << std::endl;
 
@@ -246,5 +252,7 @@ int main(){
     std::cout << "Decrypted: " << DesFunc(ciphertext, cookeys) << std::endl;
 
     delete[] cookeys;
+
+    std::cout << "Time: " << (double)(end - start) / CLOCKS_PER_SEC;
     return 0;
 }
