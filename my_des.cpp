@@ -7,6 +7,24 @@ using u8  = uint8_t;
 using u32 = uint32_t;
 using u64 = uint64_t;
 
+struct BitSet_6{
+    u8 b1 : 1;
+    u8 b2 : 1;
+    u8 b3 : 1;
+    u8 b4 : 1;
+    u8 b5 : 1;
+    u8 b6 : 1;
+
+    BitSet_6 (u8 bits){
+        b6 = (bits) & 1;
+        b5 = (bits >> 1) & 1;
+        b4 = (bits >> 2) & 1;
+        b3 = (bits >> 3) & 1;
+        b2 = (bits >> 4) & 1;
+        b1 = (bits >> 5) & 1;
+    }
+};
+
 static const u8 KeyRolling[16] = {
     1, 1, 2, 2, 2, 2, 2, 2,
     1, 2, 2, 2, 2, 2, 2, 1
@@ -129,29 +147,27 @@ static const u32 SP8[64] = {
     0x00001040,0x10040000,0x10041000,0x10000040,0x10000040,0x00000000,0x00000000,0x10041040
 };
 
-struct ROWKEY {
-    u32 first_half;
-    u32 second_half;
-};
 
-ROWKEY RolKey(ROWKEY key, int round)
+u64 RolKey(u64 key, int round)
 {
     u8 shift = KeyRolling[round];
     u32 mask = 0x0fffffff;
 
-    ROWKEY rol_key = {(key.first_half << shift | key.first_half >> (28 - shift)) & mask,
-                (key.second_half << shift | key.second_half >> (28 - shift)) & mask};
+    u64 first_half = (key >> 28) & mask;
+    u64 second_half = key & mask;
+
+    u64 rol_key = (((first_half << shift | first_half >> (28 - shift)) & mask) << 28 |
+                ((second_half << shift | second_half >> (28 - shift)) & mask));
 
     return rol_key;
 }
 
-u64 ApplyPC2(ROWKEY key){
-    u64 full_key = (key.first_half << 28) | key.second_half;
+u64 ApplyPC2(u64 key){
 
     u64 sub_key = 0;
     for (int i = 0; i < 48; i++){
         u8 bit_number = PC2[i] - 1;
-        u8 bit = (full_key >> bit_number) & 1;
+        u8 bit = (key >> bit_number) & 1;
         sub_key <<= 1;
         sub_key |= bit;
     }
@@ -159,7 +175,7 @@ u64 ApplyPC2(ROWKEY key){
     return sub_key;
 }
 
-u64* CooKeys(ROWKEY des_key){
+u64* CooKeys(u64 des_key){
     u64 *cookeys = new u64[16];
     for (int i = 0; i < 16; i++){
         des_key = RolKey(des_key, i);
@@ -169,56 +185,58 @@ u64* CooKeys(ROWKEY des_key){
     return cookeys;
 }
 
-u64 DesFunc(u64 plain_text, u64* cookeys){
+
+u32 DesFunc(u32 right, u64 key){
+    // E - table
+    u64 b_e = 0;
+    for (int j = 0; j < 48; j++){
+        u8 bit_number = E[j] - 1;
+        u8 bit = (right >> bit_number) & 1;
+        b_e <<= 1;
+        b_e |= bit;
+    }
+
+        // XOR KEY
+    u64 b_k = b_e ^ key;
+
+        // S - table
+    u32 b_s = 0;
+    for (int s = 0; s < 8; s++){
+        u8 mask = 0b111111;
+        BitSet_6 b((b_k >> ((7 - s) * 6)) & mask);
+        u8 row = (b.b1 << 1) | b.b6;
+        u8 column = (b.b1 << 3) | (b.b2 << 2) | (b.b3 << 1) | (b.b4);
+
+        u32 res = 0;
+        switch (s) {
+            case 0: res = SP1[row * 16 + column]; break;
+            case 1: res = SP2[row * 16 + column]; break;
+            case 2: res = SP3[row * 16 + column]; break;
+            case 3: res = SP4[row * 16 + column]; break;
+            case 4: res = SP5[row * 16 + column]; break;
+            case 5: res = SP6[row * 16 + column]; break;
+            case 6: res = SP7[row * 16 + column]; break;
+            case 7: res = SP8[row * 16 + column]; break;
+        }
+        b_s |= res;
+    }
+    return b_s;
+}
+
+u64 Des(u64 plain_text, u64* cookeys, int rounds){
     u32 left = (plain_text >> 32) & 0xFFFFFFFF;
     u32 right = plain_text & 0xFFFFFFFF;
 
-    for (int i = 0; i < 16; i++){
-        // E - table
-        u64 b_e = 0;
-        for (int j = 0; j < 48; j++){
-            u8 bit_number = E[j] - 1;
-            u8 bit = (right >> bit_number) & 1;
-            b_e <<= 1;
-            b_e |= bit;
-        }
-
-        // XOR KEY
-        u64 b_k = b_e ^ cookeys[i];
-
-        // S - table
-        u32 b_s = 0;
-        for (int s = 0; s < 8; s++){
-            u8 mask = 0b111111;
-            std::bitset<6> b((b_k >> ((7 - s) * 6)) & mask);
-
-            u8 row = (b[5] << 1) | b[0];
-            u8 column = (b[4] << 3) | (b[3] << 2) | (b[2] << 1) | (b[1]);
-
-            u32 res = 0;
-            switch (s) {
-                case 0: res = SP1[row * 16 + column]; break;
-                case 1: res = SP2[row * 16 + column]; break;
-                case 2: res = SP3[row * 16 + column]; break;
-                case 3: res = SP4[row * 16 + column]; break;
-                case 4: res = SP5[row * 16 + column]; break;
-                case 5: res = SP6[row * 16 + column]; break;
-                case 6: res = SP7[row * 16 + column]; break;
-                case 7: res = SP8[row * 16 + column]; break;
-            }
-            b_s |= res;
-        }
-
+    for (int i = 0; i < rounds; i++){
         // SWAP
-        u32 new_left = b_s ^ left;
+        u32 new_left = DesFunc(right, cookeys[i]) ^ left;
         left = right;
         right = new_left;
     }
 
-    u64 tmp_right = right;
-    u64 tmp_left = left;
-    return (tmp_right << 32) | tmp_left;
+    return  ((u64)right)<< 32 | left;
 }
+
 
 void ReverseKeys(u64* cookeys, int rounds = 16) {
     for (int i = 0; i < rounds / 2; i++) {
@@ -228,8 +246,18 @@ void ReverseKeys(u64* cookeys, int rounds = 16) {
     }
 }
 
+u64 ReverseLastRound(u64 ciphertext, u64* cookeys) {
+    u32 R16 = ciphertext >> 32;       
+    u32 L16 = (u32)ciphertext;       
+
+    u32 R15 = L16;
+    u32 L15 = R16 ^ DesFunc(L16, cookeys[15]);
+
+    return ((u64)R15 << 32) | L15;
+}
+
 int main(){
-    ROWKEY key = {0x0E329232, 0xEA6D0D73};  
+    u64 key = 0x0E329232EA6D0D73;  
 
     u64* cookeys = CooKeys(key);
 
@@ -241,18 +269,30 @@ int main(){
     u64 ciphertext;
     clock_t start = clock();
     for (int i = 0; i < 1000000; i++){
-        ciphertext = DesFunc(plaintext, cookeys);
+        ciphertext = Des(plaintext, cookeys, 16);
     }
     clock_t end = clock();
 
-    std::cout << "Encrypted: " << ciphertext << std::endl;
+    std::cout << "Encrypted 16: " << ciphertext << std::endl;
+
+    u64 otk = ReverseLastRound(ciphertext, cookeys);
+
+    std::cout << "OTK: " << otk << std::endl;
+    ciphertext = Des(plaintext, cookeys, 15);
+
+    std::cout<<"Encrypted 15: " << ciphertext << std::endl;
+
+    ciphertext = Des(plaintext, cookeys, 16);
 
     ReverseKeys(cookeys);
 
-    std::cout << "Decrypted: " << DesFunc(ciphertext, cookeys) << std::endl;
+    std::cout << "Decrypted: " << Des(ciphertext, cookeys, 16) << std::endl;
 
     delete[] cookeys;
 
     std::cout << "Time: " << (double)(end - start) / CLOCKS_PER_SEC;
     return 0;
+
+    //! 1000000 - 16.06
+    //! 1000000 - 5.12
 }
