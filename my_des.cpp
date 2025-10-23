@@ -1,7 +1,10 @@
 #include <iostream>
+#include <fstream>
+#include <string>
 #include <bitset>
 #include <stdint.h>
-#include<ctime>
+#include <ctime>
+#include <random>
 
 using u8  = uint8_t;
 using u32 = uint32_t;
@@ -257,42 +260,60 @@ u64 ReverseLastRound(u64 ciphertext, u64* cookeys) {
 }
 
 int main(){
-    u64 key = 0x0E329232EA6D0D73;  
+    std::ofstream out(std::string("ciphers.txt"));
+    std::mt19937_64 mt(clock());
+    u64 character = 0x0222222200000000;
 
-    u64* cookeys = CooKeys(key);
+    for (size_t i = 0; i < 1000; i++){
+        u64 key = mt() & 0xffffffffffffff; 
+        u64* cookeys = CooKeys(key);
+        u64 plaintext_1 = mt();
+        u64 plaintext_2 = plaintext_1 ^ character;
 
-    std::cout << "Key: " << std::hex << cookeys[0] << std::endl;
+        u64 ciphertext_1 = Des(plaintext_1, cookeys, 4);
+        u64 ciphertext_2 = Des(plaintext_2, cookeys, 4);
 
-    u64 plaintext = 0x012345678922CDEF;
-    std::cout << "Plain Text: " << std::hex << plaintext << std::endl;
-
-    u64 ciphertext;
-    clock_t start = clock();
-    for (int i = 0; i < 1000000; i++){
-        ciphertext = Des(plaintext, cookeys, 16);
+        out << std::hex << ciphertext_1 << '%' << ciphertext_2 << '$' << 1 << ' ';
+        delete[] cookeys;
     }
-    clock_t end = clock();
+    
+    for (size_t i = 0; i < 1000; i++){
+        u64 rand_num_1 = mt();
+        u64 rand_num_2 = mt();
+        out << std::hex << rand_num_1 << '%' << rand_num_2 << '$' << 0 << ' ';
 
-    std::cout << "Encrypted 16: " << ciphertext << std::endl;
+    }
+    
 
-    u64 otk = ReverseLastRound(ciphertext, cookeys);
+    
+    // std::cout << "Plain Text: " << std::hex << plaintext << std::endl;
 
-    std::cout << "OTK: " << otk << std::endl;
-    ciphertext = Des(plaintext, cookeys, 15);
+    // u64 ciphertext;
+    // clock_t start = clock();
+    // for (int i = 0; i < 1; i++){
+    //     ciphertext = Des(plaintext, cookeys, 16);
+    // }
+    // clock_t end = clock();
 
-    std::cout<<"Encrypted 15: " << ciphertext << std::endl;
+    // std::cout << "Encrypted 16: " << ciphertext << std::endl;
 
-    ciphertext = Des(plaintext, cookeys, 16);
+    // u64 otk = ReverseLastRound(ciphertext, cookeys);
 
-    ReverseKeys(cookeys);
+    // std::cout << "OTK: " << otk << std::endl;
+    // ciphertext = Des(plaintext, cookeys, 15);
 
-    std::cout << "Decrypted: " << Des(ciphertext, cookeys, 16) << std::endl;
+    // std::cout<<"Encrypted 15: " << ciphertext << std::endl;
 
-    delete[] cookeys;
+    // ciphertext = Des(plaintext, cookeys, 16);
 
-    std::cout << "Time: " << (double)(end - start) / CLOCKS_PER_SEC;
-    return 0;
+    // ReverseKeys(cookeys);
 
-    //! 1000000 - 16.06
-    //! 1000000 - 5.12
+    // std::cout << "Decrypted: " << Des(ciphertext, cookeys, 16) << std::endl;
+
+    // delete[] cookeys;
+
+    // std::cout << "Time: " << (double)(end - start) / CLOCKS_PER_SEC << '\n';
+
+    
+    // std::cout << mt();
 }
