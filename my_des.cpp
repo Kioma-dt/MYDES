@@ -260,12 +260,14 @@ u64 ReverseLastRound(u64 ciphertext, u64* cookeys) {
 }
 
 int main(){
-    std::ofstream out(std::string("ciphers.txt"));
-    std::mt19937_64 mt(clock());
+    std::ofstream out(std::string("cipherstest.txt"));
+    std::mt19937_64 mt(time(0));
     u64 character = 0x0222222200000000;
-
-    for (size_t i = 0; i < 1000; i++){
-        u64 key = mt() & 0xffffffffffffff; 
+    // out << "[";
+    for (size_t i = 0; i < 500; i++){
+        u64 key = (mt()%2 << 1) | (mt()%2 << 2) | (mt()%2 << 5) | (mt()%2 << 6) | (mt()%2 << 8) |
+                (mt()%2 << 12) | (mt()%2 << 15) | (mt()%2 << 19) | (mt()%2 << 20) | (mt()%2 << 22) |               
+                (mt()%2 << 22) | (mt()%2 << 24) | (mt()%2 << 25);
         u64* cookeys = CooKeys(key);
         u64 plaintext_1 = mt();
         u64 plaintext_2 = plaintext_1 ^ character;
@@ -277,10 +279,10 @@ int main(){
         delete[] cookeys;
     }
     
-    for (size_t i = 0; i < 1000; i++){
+    for (size_t i = 0; i < 500; i++){
         u64 rand_num_1 = mt();
         u64 rand_num_2 = mt();
-        out << std::hex << rand_num_1 << '%' << rand_num_2 << '$' << 0 << ' ';
+        out << std::hex << rand_num_1 << '%' << rand_num_2 << '$' << 0  << ' ';
 
     }
     

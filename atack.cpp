@@ -1,11 +1,15 @@
 #include <iostream>
 #include <bitset>
 #include <stdint.h>
-#include<ctime>
+#include <ctime>
+#include <vector>
+#include <random>
 
 using u8  = uint8_t;
 using u32 = uint32_t;
 using u64 = uint64_t;
+
+extern "C" double NEIRONKA(u64 c1, u64 c2);
 
 struct BitSet_6{
     u8 b1 : 1;
@@ -187,8 +191,8 @@ u64 ApplyPC2(u64 key){
 }
 
 u64* CooKeys(u64 des_key){
-    u64 *cookeys = new u64[16];
-    for (int i = 0; i < 16; i++){
+    u64 *cookeys = new u64[6];
+    for (int i = 0; i < 6; i++){
         des_key = RolKey(des_key, i);
         cookeys[i] = ApplyPC2(des_key);
     }
@@ -257,17 +261,14 @@ void ReverseKeys(u64* cookeys, int rounds = 16) {
     }
 }
 
-u64 ReverseLastRound(u64 ciphertext, u8 key, u8 table) {
+u64 ReverseLastRound(u64 ciphertext, u32 key, u8 table) {
     u32 R16 = ciphertext >> 32;       
     u32 L16 = (u32)ciphertext;       
 
     u32 R15 = L16;
-    u32 L15 = R16 ^ DesFunc(L16, ((u64)key << (48 - table * 6)));
+    u32 L15 = R16 ^ DesFunc(L16, ((u64)key << (36)));
 
-    u32 R14 = L15;
-    u32 L14 = R15 ^ DesFunc(L15, ((u64)key << (48 - table * 6)));
-
-    return ((u64)R14 << 32) | L14;
+    return ((u64)R15 << 32) | L15;
 }
 
 u8* GetKey_8(u64* cookeys, u8 table){
@@ -286,75 +287,58 @@ std::bitset<8> GetChipher_8(u64 ciphertext, const u8 bits[4]){
 }
 
 int main(){
-    u64 key = 0x0E329232EA6D0D73;  
+    std::mt19937_64 mt(time(0));
+    u64 character = 0x0222222200000000;
+    u64 key = (1 << 1) | (1 << 2) | (1 << 5) | (1 << 6) | (1 << 8) |
+                (1 << 12) | (1 << 15) | (1 << 19) | (1 << 20) | (1 << 22) |               
+                (1 << 22) | (1 << 24) | (1 << 25);
+    u64 *cookeys = CooKeys(key);
 
-    u64* cookeys = CooKeys(key);
-    u8 *cookeys_8 = GetKey_8(cookeys, 2);
+    u64 keys[8192];
+    double perc[8192];
+    int index = 0;
 
-    for (int i = 0; i < 16; i++){
-        std::cout << std::bitset<8>(cookeys_8[i]).to_string() << '\t' << std::bitset<48>(cookeys[i]).to_string() << '\n';
-    }
-
-    u64 plaintext = 0x012345678922CDEF;
-    std::cout << "Plain Text: " << std::hex << plaintext << std::endl;
-
-    u64 ciphertext;
-    clock_t start = clock();
-    for (int i = 0; i < 1; i++){
-        ciphertext = Des(plaintext, cookeys, 16);
-    }
-    clock_t end = clock();
-
-    std::cout << "Encrypted 16: " << GetChipher_8(ciphertext, SPBits[2]).to_string() << std::endl;
-
-    std::bitset<8> otk = GetChipher_8(ReverseLastRound(ciphertext, 0b01010011, 2),SPBits[2]);
-
-    std::cout << "OTK: " << otk.to_string() << std::endl;
-    ciphertext = Des(plaintext, cookeys, 15);
-
-    std::cout<<"Encrypted 15: " << GetChipher_8(ciphertext, SPBits[2]).to_string() << std::endl;
-
-    ciphertext = Des(plaintext, cookeys, 16);
-
-    ReverseKeys(cookeys);
-
-    std::cout << "Decrypted: " << Des(ciphertext, cookeys, 16) << std::endl;
-
-    delete[] cookeys;
-
-    std::cout << "Time: " << (double)(end - start) / CLOCKS_PER_SEC;
-    
-    for (int i = 0; i < 64; i++)
+    for (size_t i = 0; i < 8192; i++)
     {
-        std::cout << std::bitset<4>((SP2[i] >> 5) & 0b1 | (SP2[i] >> 14) & 0b10 | (SP2[i] >> 18) & 0b100 | (SP2[i] >> 28) & 0b1000).to_string() << '\n';
+        u64 key_pod = ((i & 1) << 1) | ((i & 2) << 2) | ((i & 4) << 5) | ((i & 8) << 6) | ((i & 16) << 8) |
+                ((i & 32) << 12) | ((i & 64) << 15) | ((i & 128) << 19) | ((i & 256) << 20) | ((i & 512) << 22) |               
+                ((i & 1024) << 22) | ((i & 2048) << 24) | ((i & 4096) << 25);
+
+        double percent_pod = 0;
+
+        for (size_t j = 0; j < 100; j++){
+
+            u64 plaintext_1 = mt();
+            u64 plaintext_2 = plaintext_1 ^ character;
+
+            u64 ciphertext_1 = Des(plaintext_1, cookeys, 5);
+            u64 ciphertext_2 = Des(plaintext_2, cookeys, 5);
+
+            u64 otk_1 = ReverseLastRound(ciphertext_1, key_pod, 1);
+            u64 otk_2 = ReverseLastRound(ciphertext_2, key_pod, 1);
+
+            // percent_pod += NEIRONKA(otk_1, otk_2);
+            percent_pod += mt() % 100;
+        }
+
+        percent_pod /= 100;
+
+        short k = index;
+
+        while (k >= 0 && percent_pod > perc[k]){
+            perc[k + 1] = perc[k];
+            keys[k + 1] = keys[k];
+            k--;
+        }
+        perc[k + 1] = percent_pod;
+        keys[k + 1] = key_pod;
+        index++;
+        std::cout << std::hex << key_pod << ": " << percent_pod << '\n';
     }
 
-    // for (int i = 0; i < 64; i++)
-    // {
-    //     std::cout << std::bitset<32>(SP2[i]) << '\n';
-    // }
+    std::cout << "TOP 20\n";
 
-    //! #1
-    //? 0b00000001000000010000010000000100
-    //? 0b10987654321098765432109876543210
-    //! #2
-    //? 0b10000000000100001000000000100000
-    //? 0b10987654321098765432109876543210
-    //TODO #3
-
-    //TODO #4
-
-    //? 0b10987654321098765432109876543210
-    //TODO #5
-
-    //? 0b10987654321098765432109876543210
-    //TODO #6
-
-    //? 0b10987654321098765432109876543210
-    //TODO #7
-
-    //? 0b10987654321098765432109876543210
-    //TODO #8
-
-    //? 0b10987654321098765432109876543210
+    for (int i = 0; i < 20; i++){
+        std::cout << std::hex << keys[i] << ": " << perc[i] << '\n';
+    }
 }

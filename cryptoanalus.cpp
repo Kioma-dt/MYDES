@@ -1,7 +1,9 @@
 #include <iostream>
 #include <bitset>
 #include <stdint.h>
-#include<ctime>
+#include <ctime>
+#include <vector>
+#include <random>
 
 using u8  = uint8_t;
 using u32 = uint32_t;
@@ -187,8 +189,8 @@ u64 ApplyPC2(u64 key){
 }
 
 u64* CooKeys(u64 des_key){
-    u64 *cookeys = new u64[16];
-    for (int i = 0; i < 16; i++){
+    u64 *cookeys = new u64[6];
+    for (int i = 0; i < 6; i++){
         des_key = RolKey(des_key, i);
         cookeys[i] = ApplyPC2(des_key);
     }
@@ -257,17 +259,14 @@ void ReverseKeys(u64* cookeys, int rounds = 16) {
     }
 }
 
-u64 ReverseLastRound(u64 ciphertext, u8 key, u8 table) {
+u64 ReverseLastRound(u64 ciphertext, u32 key, u8 table) {
     u32 R16 = ciphertext >> 32;       
     u32 L16 = (u32)ciphertext;       
 
     u32 R15 = L16;
-    u32 L15 = R16 ^ DesFunc(L16, ((u64)key << (48 - table * 6)));
+    u32 L15 = R16 ^ DesFunc(L16, ((u64)key << (36)));
 
-    u32 R14 = L15;
-    u32 L14 = R15 ^ DesFunc(L15, ((u64)key << (48 - table * 6)));
-
-    return ((u64)R14 << 32) | L14;
+    return ((u64)R15 << 32) | L15;
 }
 
 u8* GetKey_8(u64* cookeys, u8 table){
@@ -286,53 +285,65 @@ std::bitset<8> GetChipher_8(u64 ciphertext, const u8 bits[4]){
 }
 
 int main(){
-    u64 key = 0x0E329232EA6D0D73;  
+    std::mt19937_64 mt(time(0));
+    u64 key = (mt()%2 << 1) | (mt()%2 << 2) | (mt()%2 << 5) | (mt()%2 << 6) | (mt()%2 << 8) |
+                (mt()%2 << 12) | (mt()%2 << 15) | (mt()%2 << 19) | (mt()%2 << 20) | (mt()%2 << 22) |               
+                (mt()%2 << 22) | (mt()%2 << 24) | (mt()%2 << 25);
+    u64 *cookeys = CooKeys(key);
+    std::cout << std::bitset<56>(key).to_string() << '\n' << std::bitset<48>(cookeys[4]) << '\n';
+    // std::vector<int> a;
+    // u64 key;
+    // for (int i = 0; i < 56; i++){
+    //     key = (std::bitset<64>(1) << i).to_ullong();
+    //     u64 *cookeys = CooKeys(key);
+    //     std ::cout << i + 1 << ' ' << std::bitset<56>(key).to_string() << ":\n";
 
-    u64* cookeys = CooKeys(key);
-    u8 *cookeys_8 = GetKey_8(cookeys, 2);
+    //     for (int j = 4; j < 5; j++){
+    //         std::cout << j + 1 << ". " << std::bitset<6>(cookeys[j] >> 42).to_string() << '\n' << std::bitset<6>(cookeys[j] >> 36).to_string() << '\n';
+    //     }
+    //     if (std::bitset<6>(cookeys[4] >> 42) != 0 || std::bitset<6>(cookeys[4] >> 36) != 0){
+    //         a.push_back(i);
+    //     }
+    //     delete[] cookeys;
+    // }
 
-    for (int i = 0; i < 16; i++){
-        std::cout << std::bitset<8>(cookeys_8[i]).to_string() << '\t' << std::bitset<48>(cookeys[i]).to_string() << '\n';
-    }
+    // for (auto i : a){
+    //     std::cout << i << ' ';
+    // }
+    // std::cout << '\n';
+
 
     u64 plaintext = 0x012345678922CDEF;
     std::cout << "Plain Text: " << std::hex << plaintext << std::endl;
 
     u64 ciphertext;
-    clock_t start = clock();
     for (int i = 0; i < 1; i++){
-        ciphertext = Des(plaintext, cookeys, 16);
+        ciphertext = Des(plaintext, cookeys, 5);
     }
-    clock_t end = clock();
 
-    std::cout << "Encrypted 16: " << GetChipher_8(ciphertext, SPBits[2]).to_string() << std::endl;
+    std::cout << "Encrypted 5: " << ciphertext << std::endl;
 
-    std::bitset<8> otk = GetChipher_8(ReverseLastRound(ciphertext, 0b01010011, 2),SPBits[2]);
+    u64 otk = ReverseLastRound(ciphertext, 0b111111111111, 1);
 
-    std::cout << "OTK: " << otk.to_string() << std::endl;
-    ciphertext = Des(plaintext, cookeys, 15);
+    std::cout << "OTK: " << otk << std::endl;
 
-    std::cout<<"Encrypted 15: " << GetChipher_8(ciphertext, SPBits[2]).to_string() << std::endl;
+    ciphertext = Des(plaintext, cookeys, 4);
 
-    ciphertext = Des(plaintext, cookeys, 16);
+    std::cout<<"Encrypted 4: " << ciphertext << std::endl;
 
-    ReverseKeys(cookeys);
 
-    std::cout << "Decrypted: " << Des(ciphertext, cookeys, 16) << std::endl;
 
-    delete[] cookeys;
-
-    std::cout << "Time: " << (double)(end - start) / CLOCKS_PER_SEC;
-    
-    for (int i = 0; i < 64; i++)
-    {
-        std::cout << std::bitset<4>((SP2[i] >> 5) & 0b1 | (SP2[i] >> 14) & 0b10 | (SP2[i] >> 18) & 0b100 | (SP2[i] >> 28) & 0b1000).to_string() << '\n';
-    }
+        // for (int i = 0; i < 64; i++)
+    // {
+    //     std::cout << std::bitset<4>((SP2[i] >> 5) & 0b1 | (SP2[i] >> 14) & 0b10 | (SP2[i] >> 18) & 0b100 | (SP2[i] >> 28) & 0b1000).to_string() << '\n';
+    // }
 
     // for (int i = 0; i < 64; i++)
     // {
     //     std::cout << std::bitset<32>(SP2[i]) << '\n';
     // }
+
+    //! 3 6 9 16 21 25
 
     //! #1
     //? 0b00000001000000010000010000000100
